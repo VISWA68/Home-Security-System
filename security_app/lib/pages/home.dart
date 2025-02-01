@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:security_app/model/user_model.dart';
+import 'package:security_app/pages/add_face.dart';
 
 class HomePage extends StatelessWidget {
   @override
@@ -68,27 +70,26 @@ class HomePage extends StatelessWidget {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundImage: AssetImage('assets/viswa_img.jpg'),
-                        ),
-                        SizedBox(width: 10),
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundImage: AssetImage('assets/viswa_img1.jpg'),
-                        ),
-                        SizedBox(width: 10),
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundImage: AssetImage('assets/viswa_img.jpg'),
-                        ),
-                      ],
+                      children: UserRegistry.users.map((user) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 10.0),
+                          child: CircleAvatar(
+                            radius: 40,
+                            backgroundImage: FileImage(user.image),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AddFace(),
+                        ));
+                  },
                   child: Text('Add Face'),
                 ),
               ],
