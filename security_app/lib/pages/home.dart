@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:security_app/pages/add_face.dart';
 import 'package:security_app/provider/user_provider.dart';
+import 'package:security_app/services/authentication_service.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final AuthenticationService _authService = AuthenticationService();
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -101,9 +108,19 @@ class HomePage extends StatelessWidget {
                                                 child: Text('Cancel'),
                                               ),
                                               TextButton(
-                                                onPressed: () {
+                                                onPressed: () async {
+                                                  bool authenticated =
+                                                      await _authService
+                                                          .authenticateWithBiometrics(
+                                                              context);
+                                                  if (!authenticated) {
+                                                    _authService
+                                                        .showAuthenticationError(
+                                                            context);
+                                                    return;
+                                                  }
                                                   userProvider
-                                                      .deleteUser(index);
+                                                      .deleteUser(user.id!);
                                                   Navigator.pop(context);
                                                 },
                                                 child: Text(
