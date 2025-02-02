@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:security_app/model/user_model.dart';
+import 'package:provider/provider.dart';
 import 'package:security_app/pages/add_face.dart';
+import 'package:security_app/provider/user_provider.dart';
 
 class HomePage extends StatelessWidget {
   @override
@@ -51,7 +52,11 @@ class HomePage extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Switch(value: true, onChanged: (value) {}),
+                Switch(
+                  value: true,
+                  onChanged: (value) {},
+                  activeColor: const Color.fromARGB(255, 55, 118, 229),
+                ),
               ],
             ),
             SizedBox(height: 20),
@@ -69,28 +74,89 @@ class HomePage extends StatelessWidget {
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: UserRegistry.users.map((user) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 10.0),
-                          child: CircleAvatar(
-                            radius: 40,
-                            backgroundImage: FileImage(user.image),
-                          ),
-                        );
-                      }).toList(),
+                    child: Consumer<UserProvider>(
+                      builder: (context, userProvider, child) {
+                        return (userProvider.users.isEmpty)
+                            ? Text(
+                                "No users added",
+                                style: TextStyle(color: Colors.red),
+                              )
+                            : Row(
+                                children: List.generate(
+                                  userProvider.users.length,
+                                  (index) {
+                                    final user = userProvider.users[index];
+                                    return InkWell(
+                                      onLongPress: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: Text('Delete User'),
+                                            content: Text(
+                                                'Do you want to delete ${user.name}?'),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                child: Text('Cancel'),
+                                              ),
+                                              TextButton(
+                                                onPressed: () {
+                                                  userProvider
+                                                      .deleteUser(index);
+                                                  Navigator.pop(context);
+                                                },
+                                                child: Text(
+                                                  'Delete',
+                                                  style: TextStyle(
+                                                      color: Colors.red),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 10.0),
+                                        child: Column(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 40,
+                                              backgroundImage:
+                                                  FileImage(user.image),
+                                            ),
+                                            Text(user.name),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              );
+                      },
                     ),
                   ),
                 ),
                 ElevatedButton(
                   onPressed: () {
                     Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AddFace(),
-                        ));
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddFace(),
+                      ),
+                    );
                   },
-                  child: Text('Add Face'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.all(Radius.elliptical(12, 12)))),
+                  child: Text(
+                    'Add Face',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),

@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:security_app/model/user_model.dart';
+import 'package:provider/provider.dart';
+import 'package:security_app/provider/user_provider.dart';
 
 class AddFace extends StatefulWidget {
   @override
@@ -22,7 +23,7 @@ class _ImagePickerPageState extends State<AddFace> {
     }
   }
 
-  void _showNameInputDialog() {
+void _showNameInputDialog() {
     final TextEditingController _nameController = TextEditingController();
 
     showDialog(
@@ -44,14 +45,11 @@ class _ImagePickerPageState extends State<AddFace> {
             ElevatedButton(
               onPressed: () {
                 if (_nameController.text.isNotEmpty && _image != null) {
-                  setState(() {
-                    UserRegistry.users.add(
-                      RegisteredUser(
-                        name: _nameController.text,
-                        image: _image!,
-                      ),
-                    );
-                  });
+                  // Use provider to add user
+                  context.read<UserProvider>().addUser(
+                    _nameController.text,
+                    _image!,
+                  );
                   Navigator.of(context).pop();
                   Navigator.of(context).pop();
                 }
@@ -121,3 +119,4 @@ class _ImagePickerPageState extends State<AddFace> {
     );
   }
 }
+
