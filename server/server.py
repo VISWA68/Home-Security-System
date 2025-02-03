@@ -1,101 +1,134 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import os
 import cv2
 import pickle
 import numpy as np
+import asyncio
 from deepface import DeepFace
-import base64
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import json
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI()
 
 REGISTERED_FACES_DB = "registered_faces.pkl"
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+clients = set()
 
-def save_base64_image(base64_string, filename):
-    img_data = base64.b64decode(base64_string.split(',')[1] if ',' in base64_string else base64_string)
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    with open(filepath, 'wb') as f:
-        f.write(img_data)
-    return filepath
-
-@app.route('/register_face', methods=['POST'])
-def register_face_endpoint():
+def load_registered_faces():
+    """Load registered faces from the database."""
     try:
-        data = request.json
-        if not data or 'image' not in data or 'username'({'error': 'Missing image or username'}):400
+        with open(REGISTERED_FACES_DB, "rb") as f:
+            return pickle.load(f)
+    except (FileNotFoundError, EOFError):
+        return {}
 
-        image_path = save_base64_image(data['image'], f"{data['username']}.jpg")
-        
+def save_registered_faces(data):
+    """Save registered faces to the database."""
+    with open(REGISTERED_FACES_DB, "wb") as f:
+        pickle.dump(data, f)
+
+@app.post("/register")
+async def register_face(image_path: str, user_name: str):
+    """Register a new face."""
+    try:
         embedding = DeepFace.represent(img_path=image_path, model_name="Facenet")[0]["embedding"]
-        
-        try:
-            with open(REGISTERED_FACES_DB, "rb") as f:
-                registered_faces = pickle.load(f)
-        except (FileNotFoundError, EOFError):
-            registered_faces = {}
-            
-        registered_faces[data['username']] = embedding
-        
-        with open(REGISTERED_FACES_DB, "wb") as f:
-            pickle.dump(registered_faces, f)
-            
-        return jsonify({'message': f"Face registered successfully for {data['username']}!"})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        registered_faces = load_registered_faces()
 
-@app.route('/detect_face', methods=['POST'])
-def detect_face_endpoint():
+        if user_name in registered_faces:
+            return {"warning": f"{user_name} is already registered. Updating face data."}
+        
+        registered_faces[user_name] = embedding
+        save_registered_faces(registered_faces)
+        return {"success": f"Face registered successfully for {user_name}!"}
+    
+    except Exception as e:
+        return {"error": f"Face registration failed: {str(e)}"}
+
+@app.delete("/delete")
+async def delete_user(user_name: str):
+    """Delete a registered face."""
+    registered_faces = load_registered_faces()
+
+    if user_name not in registered_faces:
+        return {"error": f"User '{user_name}' not found in the database."}
+
+    del registered_faces[user_name]
+    save_registered_faces(registered_faces)
+    return {"success": f"User '{user_name}' has been deleted."}
+
+async def recognize_and_anti_spoof(websocket: WebSocket):
+    """Real-time face recognition & spoof detection. Sends results via WebSocket."""
+    registered_faces = load_registered_faces()
+
+    if not registered_faces:
+        await websocket.send_text(json.dumps({"error": "No registered faces found!"}))
+        return
+
+    cap = cv2.VideoCapture(0)
+
+    while True:
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            await websocket.send_text(json.dumps({"error": "Frame capture failed!"}))
+            continue
+
+        temp_path = "temp_frame.jpg"
+        cv2.imwrite(temp_path, frame)
+
+        try:
+            try:
+                DeepFace.analyze(img_path=temp_path, actions=['emotion', 'race'], enforce_detection=False, anti_spoofing=True)
+            except ValueError as ve:
+                if "Spoof detected" in str(ve):
+                    await websocket.send_text(json.dumps({"alert": "🚨 Spoofing Detected!"}))
+                    continue
+                else:
+                    raise ve  
+
+            face_data = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=False)
+
+            if face_data and len(face_data) > 0:
+                face_embedding = face_data[0]["embedding"]
+                best_match = None
+                min_distance = float("inf")
+
+                for user, reg_embedding in registered_faces.items():
+                    distance = np.linalg.norm(np.array(face_embedding) - np.array(reg_embedding))
+
+                    if distance < min_distance:
+                        min_distance = distance
+                        best_match = user
+
+                if min_distance < 10:  
+                    result = {"status": "Access Granted", "user": best_match}
+                else:
+                    result = {"status": "Unknown Face"}
+
+                await websocket.send_text(json.dumps(result))
+
+        except Exception as e:
+            await websocket.send_text(json.dumps({"error": str(e)}))
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket connection handler."""
+    await websocket.accept()
+    clients.add(websocket)
+
     try:
-        data = request.json
-        if not data or 'image'({'error': 'Missing image'}): 400
+        while True:
+            data = await websocket.receive_text()
+            command = json.loads(data)
 
-        image_path = save_base64_image(data['image'], 'temp_detection.jpg')
-        
-        try:
-            with open(REGISTERED_FACES_DB, "rb") as f:
-                registered_faces = pickle.load(f)
-        except (FileNotFoundError, EOFError):
-            return jsonify({'error': 'No registered faces found!'}), 404
+            if command.get("action") == "start":
+                await recognize_and_anti_spoof(websocket)
 
-        try:
-            # Anti-spoofing check
-            DeepFace.analyze(
-                img_path=image_path,
-                actions=['emotion', 'race'],
-                enforce_detection=False,
-                anti_spoofing=True
-            )
-        except ValueError as ve:
-            if "Spoof detected" in str(ve):
-                return jsonify({'error': 'Spoofing detected!'}), 400
-            raise ve
+    except WebSocketDisconnect:
+        clients.remove(websocket)
+        print("Client disconnected")
 
-        face_data = DeepFace.represent(img_path=image_path, model_name="Facenet", enforce_detection=False)
-        
-        if face_data and len(face_data) > 0:
-            face_embedding = face_data[0]["embedding"]
-            best_match = None
-            min_distance = float("inf")
-            
-            for user, reg_embedding in registered_faces.items():
-                distance = np.linalg.norm(np.array(face_embedding) - np.array(reg_embedding))
-                if distance < min_distance:
-                    min_distance = distance
-                    best_match = user
-                    
-            if min_distance < 10:
-                return jsonify({'message': f'Access Granted: {best_match}', 'user': best_match})
-            else:
-                return jsonify({'error': 'Unknown Face! Access Denied.'}), 401
-        else:
-            return jsonify({'error': 'No faces detected in the image!'}), 400
-            
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    finally:
+        clients.remove(websocket)
