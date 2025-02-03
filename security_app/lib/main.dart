@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:security_app/pages/home.dart';
+import 'package:security_app/provider/detection_provider.dart';
 import 'package:security_app/provider/user_provider.dart';
 
 void main() {
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => UserProvider()..loadUsers(),
-      child: MyApp(),
-    ),
-  );
+    MultiProvider(providers: [
+      ChangeNotifierProvider(create: (_) => UserProvider()..loadUsers()),
+      ChangeNotifierProvider(create: (_) => DetectionProvider()),
+    ],
+    child: MyApp(),
+    )
+    );
 }
 
 class MyApp extends StatelessWidget {
@@ -27,3 +30,4 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+

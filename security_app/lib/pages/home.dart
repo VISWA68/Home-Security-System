@@ -68,7 +68,7 @@ class _HomePageState extends State<HomePage> {
             ),
             SizedBox(height: 20),
             Text(
-              'Register Faces',
+              'Registered Faces',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
