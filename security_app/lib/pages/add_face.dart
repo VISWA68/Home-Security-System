@@ -3,30 +3,67 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:security_app/provider/user_provider.dart';
-import 'package:security_app/services/authentication_service.dart'; 
+import 'package:security_app/services/api_services.dart';
+import 'package:security_app/services/authentication_service.dart';
+
 class AddFace extends StatefulWidget {
   @override
-  _ImagePickerPageState createState() => _ImagePickerPageState();
+  _AddFaceState createState() => _AddFaceState();
 }
 
-class _ImagePickerPageState extends State<AddFace> {
-  File? _image;
+class _AddFaceState extends State<AddFace> {
+  File? _image; // Changed to single File
   final ImagePicker _picker = ImagePicker();
   final AuthenticationService _authService = AuthenticationService();
+  final ApiService _apiService = ApiService();
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImage() async {
+    // Changed method name and logic
     bool authenticated = await _authService.authenticateWithBiometrics(context);
     if (!authenticated) {
       _authService.showAuthenticationError(context);
       return;
     }
 
-    // If authenticated, proceed with image picking
-    final XFile? pickedFile = await _picker.pickImage(source: source);
+    final XFile? pickedFile =
+        await _picker.pickImage(source: ImageSource.gallery);
+
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
       });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No image selected.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _captureImage() async {
+    // Changed method name and logic
+    bool authenticated = await _authService.authenticateWithBiometrics(context);
+    if (!authenticated) {
+      _authService.showAuthenticationError(context);
+      return;
+    }
+
+    final XFile? pickedFile =
+        await _picker.pickImage(source: ImageSource.camera);
+
+    if (pickedFile != null) {
+      setState(() {
+        _image = File(pickedFile.path);
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No image selected.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -40,31 +77,76 @@ class _ImagePickerPageState extends State<AddFace> {
           title: Text('Enter Name'),
           content: TextField(
             controller: _nameController,
-            decoration: InputDecoration(hintText: 'Name'),
+            decoration: InputDecoration(hintText: 'Enter Name'),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
               child: Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () async {
                 if (_nameController.text.isNotEmpty && _image != null) {
-                  bool authenticated =
-                      await _authService.authenticateWithBiometrics(context);
-                  if (!authenticated) {
-                    _authService.showAuthenticationError(context);
-                    return;
-                  }
+                  try {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) =>
+                          Center(child: CircularProgressIndicator()),
+                    );
 
-                  context.read<UserProvider>().addUser(
-                        _nameController.text,
-                        _image!,
+                    bool authenticated =
+                        await _authService.authenticateWithBiometrics(context);
+                    if (!authenticated) {
+                      Navigator.pop(context);
+                      _authService.showAuthenticationError(context);
+                      return;
+                    }
+
+                    var res = await _apiService.registerFace(
+                      _image!.path, // Changed to single image path
+                      _nameController.text,
+                    );
+
+                    Navigator.pop(context); // Remove loading dialog
+
+                    if (res == "success") {
+                      context.read<UserProvider>().addUser(
+                            _nameController.text,
+                            _image!, // Pass single image
+                          );
+                      Navigator.pop(context); // Close dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('Face registered successfully!')),
                       );
-                  Navigator.of(context).pop();
-                  Navigator.of(context).pop();
+                    } else if (res == "warning") {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content:
+                              Text('User already exists. Face data updated.'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                      Navigator.pop(context);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                              'Failed to register face. Please try again.'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('An error occurred: ${e.toString()}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
               },
               child: Text('Add'),
@@ -99,12 +181,9 @@ class _ImagePickerPageState extends State<AddFace> {
                 width: buttonWidth,
                 height: buttonHeight,
                 child: ElevatedButton.icon(
-                  icon: Icon(
-                    Icons.camera_alt,
-                    size: 30,
-                    color: Colors.white,
-                  ),
-                  onPressed: () => _pickImage(ImageSource.camera),
+                  icon: Icon(Icons.file_copy_outlined,
+                      size: 30, color: Colors.white),
+                  onPressed: _captureImage, // Changed method name
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     shape: RoundedRectangleBorder(
@@ -112,25 +191,22 @@ class _ImagePickerPageState extends State<AddFace> {
                     ),
                   ),
                   label: Text(
-                    'Capture with camera',
+                    'Capture Image',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+                        color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(
+                height: 25,
+              ),
               SizedBox(
                 width: buttonWidth,
                 height: buttonHeight,
                 child: ElevatedButton.icon(
-                  icon: Icon(
-                    Icons.file_copy_outlined,
-                    size: 30,
-                    color: Colors.white,
-                  ),
-                  onPressed: () => _pickImage(ImageSource.gallery),
+                  icon: Icon(Icons.file_copy_outlined,
+                      size: 30, color: Colors.white),
+                  onPressed: _pickImage, // Changed method name
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     shape: RoundedRectangleBorder(
@@ -138,26 +214,27 @@ class _ImagePickerPageState extends State<AddFace> {
                     ),
                   ),
                   label: Text(
-                    'Upload from files',
+                    'Upload Image',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+                        color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
               SizedBox(height: 20),
               _image != null
-                  ? Image.file(
-                      _image!,
+                  ? Container(
                       height: 200,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
+                      width: 200,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.file(
+                          _image!,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
                     )
                   : Placeholder(
-                      fallbackHeight: 200,
-                      fallbackWidth: double.infinity,
-                    ),
+                      fallbackHeight: 200, fallbackWidth: double.infinity),
               SizedBox(height: 20),
               SizedBox(
                 width: buttonWidth,
@@ -173,9 +250,7 @@ class _ImagePickerPageState extends State<AddFace> {
                   child: Text(
                     'Confirm',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+                        color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),

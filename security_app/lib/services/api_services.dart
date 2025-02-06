@@ -1,45 +1,89 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:web_socket_channel/io.dart';
+import 'dart:io';
 
 class ApiService {
-  final String baseUrl = "http://192.168.219.231:8000"; 
-  late IOWebSocketChannel channel;
+  final String baseUrl =
+      "http://192.168.219.231:5000"; // Changed port to Flask default
 
-  Future<String> registerFace(String imagePath, String userName) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/register"),
-      body: jsonEncode({"image_path": imagePath, "user_name": userName}),
-      headers: {"Content-Type": "application/json"},
-    );
+  // Register Face
+  Future<String> registerFace(String imagePath, String name) async {
+    try {
+      var request =
+          http.MultipartRequest('POST', Uri.parse('$baseUrl/register'));
 
-    final data = jsonDecode(response.body);
-    return data.containsKey("success") ? data["success"] : data["error"];
+      // Add single file
+      request.files.add(await http.MultipartFile.fromPath('file', imagePath));
+
+      // Add name field
+      request.fields['name'] = name;
+
+      var response = await request.send();
+      var responseData = await response.stream.bytesToString();
+      Map<String, dynamic> jsonResponse = json.decode(responseData);
+
+      if (response.statusCode == 200) {
+        return "success";
+      } else if (response.statusCode == 403) {
+        return "spoofing_detected";
+      }
+
+      return jsonResponse['error'] ?? "error";
+    } catch (e) {
+      print('Error in registerFace: $e');
+      return "error";
+    }
   }
 
-  Future<String> deleteFace(String userName) async {
-    final response = await http.delete(
-      Uri.parse("$baseUrl/delete"),
-      body: jsonEncode({"user_name": userName}),
-      headers: {"Content-Type": "application/json"},
-    );
+  // Delete Face
+  Future<bool> deleteFace(String name) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/delete'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: {
+          'name': name,
+        },
+      );
 
-    final data = jsonDecode(response.body);
-    return data.containsKey("success") ? data["success"] : data["error"];
+      print('Delete Response Status: ${response.statusCode}');
+      print('Delete Response Body: ${response.body}');
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error deleting face: $e');
+      return false;
+    }
   }
 
-  void startRecognition(void Function(String) onData) {
-    channel = IOWebSocketChannel.connect("ws://192.168.219.231/ws");
+  // Start Recognition
+  Future<Map<String, dynamic>> startRecognition() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/recognize'));
 
-    channel.stream.listen((message) {
-      final response = jsonDecode(message);
-      onData(response.containsKey("status") ? response["status"] : response["error"] ?? "Unknown Error");
-    });
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else if (response.statusCode == 500) {
+        return {'error': 'Could not access camera'};
+      }
 
-    channel.sink.add(jsonEncode({"action": "start"}));
+      return {'error': 'Unknown error occurred'};
+    } catch (e) {
+      print('Error in recognition: $e');
+      return {'error': e.toString()};
+    }
   }
 
-  void closeConnection() {
-    channel.sink.close();
+  // Check Server Status
+  Future<bool> checkServerStatus() async {
+    try {
+      final response = await http.get(Uri.parse(baseUrl));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error checking server status: $e');
+      return false;
+    }
   }
 }

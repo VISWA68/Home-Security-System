@@ -1,39 +1,107 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:web_socket_channel/io.dart';
 
-import 'package:flutter/foundation.dart';
-import 'package:security_app/model/recognition_response.dart';
-import 'package:security_app/services/api_services.dart';
+class DetectionResponse {
+  final String status;
+  final String? user;
+  final String? error;
 
-class DetectionProvider extends ChangeNotifier {
-  final ApiService _apiService = ApiService();
-  RecognitionResponse? _lastResponse;
+  DetectionResponse({
+    required this.status,
+    this.user,
+    this.error,
+  });
+}
+
+class DetectionProvider with ChangeNotifier {
   bool _isDetecting = false;
+  DetectionResponse? _lastResponse;
+  IOWebSocketChannel? _channel;
 
-  RecognitionResponse? get lastResponse => _lastResponse;
   bool get isDetecting => _isDetecting;
+  DetectionResponse? get lastResponse => _lastResponse;
 
   void startDetection() {
-    _isDetecting = true;
-    _apiService.startRecognition((message) {
-      try {
-        final Map<String, dynamic> jsonResponse = jsonDecode(message);
-        _lastResponse = RecognitionResponse.fromJson(jsonResponse);
-        notifyListeners();
-      } catch (e) {
-        _lastResponse = RecognitionResponse(
-          status: 'Error',
-          error: e.toString(),
-        );
-        notifyListeners();
-      }
-    });
-    notifyListeners();
+    if (_isDetecting) return;
+
+    try {
+      _channel = IOWebSocketChannel.connect(
+        'ws://192.168.219.231:8000/ws',
+      );
+
+      _isDetecting = true;
+      notifyListeners();
+
+      // Send start command
+      _channel?.sink.add(json.encode({"action": "start"}));
+
+      // Listen for responses
+      _channel?.stream.listen(
+        (message) {
+          try {
+            final data = json.decode(message);
+            _lastResponse = DetectionResponse(
+              status: data['status'] ?? 'unknown',
+              user: data['user'],
+              error: data['error'],
+            );
+            notifyListeners();
+          } catch (e) {
+            print('Error parsing message: $e');
+            _lastResponse = DetectionResponse(
+              status: 'error',
+              error: 'Failed to parse server response',
+            );
+            notifyListeners();
+          }
+        },
+        onError: (error) {
+          print('WebSocket error: $error');
+          _lastResponse = DetectionResponse(
+            status: 'error',
+            error: 'WebSocket connection error',
+          );
+          _isDetecting = false;
+          notifyListeners();
+        },
+        onDone: () {
+          print('WebSocket connection closed');
+          _isDetecting = false;
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      print('Failed to connect to WebSocket: $e');
+      _lastResponse = DetectionResponse(
+        status: 'error',
+        error: 'Failed to connect to server',
+      );
+      _isDetecting = false;
+      notifyListeners();
+    }
   }
 
   void stopDetection() {
-    _isDetecting = false;
-    _apiService.closeConnection();
-    notifyListeners();
+    if (!_isDetecting) return;
+
+    try {
+      // Send stop command before closing
+      _channel?.sink.add(json.encode({"action": "stop"}));
+
+      // Close the WebSocket connection
+      _channel?.sink.close();
+      _channel = null;
+      _isDetecting = false;
+      notifyListeners();
+    } catch (e) {
+      print('Error stopping detection: $e');
+      _lastResponse = DetectionResponse(
+        status: 'error',
+        error: 'Failed to stop detection',
+      );
+      notifyListeners();
+    }
   }
 
   @override
