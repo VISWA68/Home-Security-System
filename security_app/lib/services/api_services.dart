@@ -4,18 +4,15 @@ import 'dart:io';
 
 class ApiService {
   final String baseUrl =
-      "http://192.168.219.231:5000"; // Changed port to Flask default
+      "http://192.168.219.231:5000"; 
 
-  // Register Face
   Future<String> registerFace(String imagePath, String name) async {
     try {
       var request =
           http.MultipartRequest('POST', Uri.parse('$baseUrl/register'));
 
-      // Add single file
       request.files.add(await http.MultipartFile.fromPath('file', imagePath));
 
-      // Add name field
       request.fields['name'] = name;
 
       var response = await request.send();
@@ -35,7 +32,6 @@ class ApiService {
     }
   }
 
-  // Delete Face
   Future<bool> deleteFace(String name) async {
     try {
       final response = await http.post(
@@ -58,7 +54,6 @@ class ApiService {
     }
   }
 
-  // Start Recognition
   Future<Map<String, dynamic>> startRecognition() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/recognize'));
@@ -76,7 +71,6 @@ class ApiService {
     }
   }
 
-  // Check Server Status
   Future<bool> checkServerStatus() async {
     try {
       final response = await http.get(Uri.parse(baseUrl));

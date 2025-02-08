@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:security_app/provider/user_provider.dart';
 import 'package:security_app/services/api_services.dart';
 import 'package:security_app/services/authentication_service.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:path_provider/path_provider.dart';
 
 class AddFace extends StatefulWidget {
   @override
@@ -12,13 +14,13 @@ class AddFace extends StatefulWidget {
 }
 
 class _AddFaceState extends State<AddFace> {
-  File? _image; // Changed to single File
+  File? _image;
+  File? _thumbnail;
   final ImagePicker _picker = ImagePicker();
   final AuthenticationService _authService = AuthenticationService();
   final ApiService _apiService = ApiService();
 
   Future<void> _pickImage() async {
-    // Changed method name and logic
     bool authenticated = await _authService.authenticateWithBiometrics(context);
     if (!authenticated) {
       _authService.showAuthenticationError(context);
@@ -26,16 +28,18 @@ class _AddFaceState extends State<AddFace> {
     }
 
     final XFile? pickedFile =
-        await _picker.pickImage(source: ImageSource.gallery);
+        await _picker.pickVideo(source: ImageSource.gallery);
 
     if (pickedFile != null) {
+      final thumbnail = await _generateThumbnail(pickedFile.path);
       setState(() {
         _image = File(pickedFile.path);
+        _thumbnail = thumbnail;
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('No image selected.'),
+          content: Text('No video selected.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -43,7 +47,6 @@ class _AddFaceState extends State<AddFace> {
   }
 
   Future<void> _captureImage() async {
-    // Changed method name and logic
     bool authenticated = await _authService.authenticateWithBiometrics(context);
     if (!authenticated) {
       _authService.showAuthenticationError(context);
@@ -51,11 +54,13 @@ class _AddFaceState extends State<AddFace> {
     }
 
     final XFile? pickedFile =
-        await _picker.pickImage(source: ImageSource.camera);
+        await _picker.pickVideo(source: ImageSource.camera);
 
     if (pickedFile != null) {
+      final thumbnail = await _generateThumbnail(pickedFile.path);
       setState(() {
         _image = File(pickedFile.path);
+        _thumbnail = thumbnail;
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -104,18 +109,18 @@ class _AddFaceState extends State<AddFace> {
                     }
 
                     var res = await _apiService.registerFace(
-                      _image!.path, // Changed to single image path
+                      _image!.path,
                       _nameController.text,
                     );
 
-                    Navigator.pop(context); // Remove loading dialog
+                    Navigator.pop(context);
 
                     if (res == "success") {
                       context.read<UserProvider>().addUser(
                             _nameController.text,
-                            _image!, // Pass single image
+                            _thumbnail!,
                           );
-                      Navigator.pop(context); // Close dialog
+                      Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                             content: Text('Face registered successfully!')),
@@ -157,6 +162,22 @@ class _AddFaceState extends State<AddFace> {
     );
   }
 
+  Future<File?> _generateThumbnail(String videoPath) async {
+    try {
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: (await getTemporaryDirectory()).path,
+        imageFormat: ImageFormat.JPEG,
+        quality: 75,
+      );
+
+      return thumbnailPath != null ? File(thumbnailPath) : null;
+    } catch (e) {
+      print("Error generating thumbnail: $e");
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const double buttonWidth = 250.0;
@@ -183,7 +204,7 @@ class _AddFaceState extends State<AddFace> {
                 child: ElevatedButton.icon(
                   icon: Icon(Icons.file_copy_outlined,
                       size: 30, color: Colors.white),
-                  onPressed: _captureImage, // Changed method name
+                  onPressed: _captureImage,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     shape: RoundedRectangleBorder(
@@ -191,7 +212,7 @@ class _AddFaceState extends State<AddFace> {
                     ),
                   ),
                   label: Text(
-                    'Capture Image',
+                    'Capture Video',
                     style: TextStyle(
                         color: Colors.white, fontWeight: FontWeight.bold),
                   ),
@@ -206,7 +227,7 @@ class _AddFaceState extends State<AddFace> {
                 child: ElevatedButton.icon(
                   icon: Icon(Icons.file_copy_outlined,
                       size: 30, color: Colors.white),
-                  onPressed: _pickImage, // Changed method name
+                  onPressed: _pickImage,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     shape: RoundedRectangleBorder(
@@ -214,14 +235,14 @@ class _AddFaceState extends State<AddFace> {
                     ),
                   ),
                   label: Text(
-                    'Upload Image',
+                    'Upload Video',
                     style: TextStyle(
                         color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
               SizedBox(height: 20),
-              _image != null
+              _thumbnail != null
                   ? Container(
                       height: 200,
                       width: 200,

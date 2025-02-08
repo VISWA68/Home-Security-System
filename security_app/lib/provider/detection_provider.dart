@@ -33,10 +33,8 @@ class DetectionProvider with ChangeNotifier {
       _isDetecting = true;
       notifyListeners();
 
-      // Send start command
       _channel?.sink.add(json.encode({"action": "start"}));
 
-      // Listen for responses
       _channel?.stream.listen(
         (message) {
           try {
@@ -86,10 +84,8 @@ class DetectionProvider with ChangeNotifier {
     if (!_isDetecting) return;
 
     try {
-      // Send stop command before closing
       _channel?.sink.add(json.encode({"action": "stop"}));
 
-      // Close the WebSocket connection
       _channel?.sink.close();
       _channel = null;
       _isDetecting = false;
