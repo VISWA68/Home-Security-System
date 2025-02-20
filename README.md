@@ -29,7 +29,7 @@ Ensure you have the following installed:
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/VISWA68/SignLanguage-App.git
+   git clone https://github.com/VISWA68/Home-Security-System.git
    cd server
    ```
 2. **Setup the Backend**
